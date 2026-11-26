@@ -6,6 +6,7 @@ skinparam sequenceMessageAlign left
 
 title SD-S2 Release held stock (UC-03, OC-05)
 
+actor "Hub staff member" as V
 participant ":ReleaseHeldStockHandler" as H
 participant "audit:AuditContext" as A
 participant "clock:Clock" as C
@@ -16,25 +17,25 @@ participant "qc:QualityCheck" as Q
 
 == listHeldLots ==
 
--> H : listHeldLots()
+V -> H : listHeldLots()
 activate H
 H -> R : findHeld() : List<StockLot>
 loop for each lot
   H -> L : heldView() : HeldLotView
 end
-<-- H : Result<List<HeldLotView>>
+H --> V : Result<List<HeldLotView>>
 deactivate H
 
 == recordQualityCheck (OC-05) ==
 
--> H : recordQualityCheck(lotId, released,\n  rejected, reason)
+V -> H : recordQualityCheck(lotId, released,\n  rejected, reason)
 activate H
 H -> A : currentUser() : UserId
 H -> A : currentRole() : Role
 H -> C : now() : DateTime
 H -> R : findById(lotId) : Optional<StockLot>
 alt lot not found
-  <-- H : Failure(NOT_FOUND)
+  H --> V : Failure(NOT_FOUND)
 else found
   H -> L : recordCheck(released, rejected, reason,\n  user, role, now)
   activate L
@@ -67,7 +68,7 @@ else found
     H -> L : heldQuantity() : Quantity
     H -> L : writtenOffQuantity() : Quantity
   end
-  <-- H : Result<QualityCheckResult>
+  H --> V : Result<QualityCheckResult>
 end
 deactivate H
 @enduml

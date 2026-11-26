@@ -45,6 +45,8 @@ We selected **Scenario 19**. Its core problem, "received does not mean available
 
 The spike SPK-01 was the most significant baseline decision: one `StockLot` holding accepted, held and written-off quantities was chosen over a separate held-goods object, because one lot keeps one producer and batch (BR-03).
 
+Everything not listed in the reconciliation record was accepted from CA1 unchanged: the stakeholder catalogue, functional and non-functional requirements, business rules BR-01 to BR-05 and the use-case catalogue. CA1 files were not copied into CA2; they stay under `report/` and `diagrams/`, and only the domain model was edited, through the same reviewed changes that introduced RC-01, RC-04 and RC-05. This kept the baseline small: each change has an identifier, a reason and a list of affected artefacts, so any design decision that depends on it can be traced back to the record rather than to a rewritten CA1.
+
 ---
 
 ## 3. Selected Design Scope
@@ -69,6 +71,8 @@ All operations return `Result<T>`: a refusal is `Failure(code)` and changes noth
 
 The [use case](../analysis/use-cases/UC-02-receive-delivery.md) has eleven extensions, including partial acceptance, holding, a volunteer refused when rejecting (A-04), a manager rejecting, a missing batch (A-03) and an unannounced delivery. Nine [Gherkin scenarios](../features/receive_delivery.feature) (GH-01, GH-02, GH-06 to GH-12) cover success, refusal and the accepted-quantity boundary, and map to US-01's acceptance criteria.
 
+The scenarios use concrete values so the rules cannot be read two ways. GH-01 records 20 kg expected, 18 kg received and 15 kg accepted, and checks that exactly 3 kg is held. GH-09 is a scenario outline on the boundary of NFR-04: accepting 18 of 18 kg succeeds, 18.5 kg and 0 kg are refused with `INVALID_QUANTITY`. GH-12 shows the supplied unit being converted (5 boxes of 12 eggs become 60 each), and GH-10 shows a delivery accepted with its batch marked missing, so receipt is never blocked by a producer's incomplete records (A-03).
+
 The [SSD](../design/ssd/SSD-S1-receive-delivery.puml) shows four system events: `startReceipt`, `addLine`, `recordLineReceipt` and `completeReceipt`. `recordLineReceipt` carries the richest behaviour, so its contract ([OC-03](../design/contracts/OC-S1-receive-delivery.md)) has five controlled failures. The most important is `NOT_PERMITTED` when a volunteer records *Rejected*. Its postconditions create a stock lot whose held quantity is never available, enforcing BR-01 at the moment goods enter the system. Abandoning a receipt is deliberately not a system event: recorded lines keep their outcomes (RC-07).
 
 ### 4.2 UC-03 Release held stock
@@ -77,11 +81,15 @@ The [use case](../analysis/use-cases/UC-03-release-held-stock.md) lets a staff m
 
 The [SSD](../design/ssd/SSD-S2-release-held-stock.puml) has two events. `listHeldLots` only reads data, so it has no contract. `recordQualityCheck` changes state, so [OC-05](../design/contracts/OC-S2-release-held-stock.md) specifies it: a `QualityCheck` is created and linked to the lot and user; held quantity decreases by released plus rejected; accepted increases by released; written-off increases by rejected. The lot's trace details never change, so released goods keep their producer and batch.
 
+The use case's minimal guarantee, "nothing changes unless the whole check is valid", shaped the contract: OC-05 has one success path and four controlled failures, and none of them create a `QualityCheck` or move any quantity. GH-14 is the richest example: the manager releases 7 kg and rejects 30 kg of a 37 kg hold, leaving 20 kg available, nothing held and 30 kg written off.
+
 ### 4.3 UC-05 Allocate stock
 
 The [use case](../analysis/use-cases/UC-05-allocate-stock.md) allocates checked stock to an order line. Volunteers are refused; a fully allocated line is refused; held stock is never counted (BR-01); lots without a use-by date are used last. [GH-18 to GH-22](../features/allocate_stock.feature) cover allocation from one and several lots, the shortfall case and the never-over-allocate boundary, and [GH-05](../features/trace_item.feature) covers tracing.
 
 The [SSD](../design/ssd/SSD-S3-allocate-stock.puml) has three events; only `allocateOrderLine` changes state ([OC-06](../design/contracts/OC-S3-allocate-stock.md)). Lots are taken earliest use-by first; for each lot used an `Allocation` is created, linked to the line and the lot, and the lot's allocated quantity grows by exactly what it gives. A shortfall is a success, not a failure: the remaining quantity is returned as the line's shortfall. The invariant `allocatedQuantity ≤ acceptedQuantity` holds for every lot (NFR-04).
+
+Treating a shortfall as a success was a deliberate behavioural choice. UC-05 allocates everything available and reports what is missing; deciding what to do about the missing quantity belongs to UC-06, which was descoped. Because OC-06 already returns the shortfall, UC-06 can be added later as an extension without changing UC-05's contract or tests.
 
 ---
 
@@ -93,13 +101,19 @@ Four GRASP decision records cover the design: [DR-005](../decisions/DR-005-recei
 
 The [CRC cards](../design/crc/CRC-S1-receive-delivery.md) place every rule with the class that holds its data. `ReceiveDeliveryHandler` is a use-case controller (DR-005): it receives the four system events and coordinates, but makes no decisions. A single `HubController` was rejected because it would grow with every use case. `DeliveryLine` holds received and accepted quantities, so it checks that accepted never exceeds received (Information Expert) and creates the `StockLot` (Creator, DR-006); letting the handler create the lot was rejected because the "no lot when rejected" rule would sit outside the domain. `Delivery`, as aggregate root, completes the trace details because only it knows the producer and date. `ReceiptOutcome.permittedFor(role)` holds the rejection rule, so a change to A-04 touches one method (Protected Variations).
 
+Two smaller placements support the same goal. `ReceiptOutcome.createsLot()` keeps the rule "a rejected line yields no lot" with the outcome it depends on, and `Product.toSellingUnit()` keeps conversion factors with the product (A-02). If the hub answers Q-02 with a richer conversion policy, only `Product` changes.
+
 ### 5.2 UC-03 Release held stock
 
 The [CRC cards](../design/crc/CRC-S2-release-held-stock.md) give the quality check to `StockLot`, not to the controller (DR-007). The lot owns all three quantities, so it moves released goods from held to accepted and rejected goods from held to written off (Information Expert), and it creates the `QualityCheck` because it records its checks and holds the data to validate them (Creator). Permissions sit in `Role.mayRelease()` and `mayReject()`, so if the hub's answer to Q-04 or Q-07 differs, only `Role` changes (Protected Variations). The rejected alternative, a controller checking roles with `if` statements and setting quantities through setters, would let any caller bypass NFR-04. Quality checks are saved with their lot, avoiding a second repository whose saves could disagree.
 
+`QualityCheck` validates itself (no negative quantities, not both zero, a reason whenever anything is rejected), so the lot only has to check the quantities against what it holds. This keeps each class's checks about its own data.
+
 ### 5.3 UC-05 Allocate stock
 
 The [CRC cards](../design/crc/CRC-S3-allocate-stock.md) split allocation between two experts (DR-010). `OrderLine` knows the requested quantity and its existing allocations, so it knows what is outstanding and creates each `Allocation` (Creator; the domain model records allocations against the line). `StockLot` alone knows its available quantity, so `StockLot.allocate` refuses anything above it, and `expiresBefore` holds the use-by ordering rule. Two alternatives were rejected: the controller creating allocations, which would put rules in the controller, and a repository returning lots already sorted, which would put a hub rule into storage.
+
+The split also protects the other use cases: `StockLot` does not depend on orders, so UC-02 and UC-03 carry no dependency on UC-05. If the hub later changes the order in which lots are used, only `StockLot.expiresBefore` changes.
 
 **Integrated design class diagram.** The [integrated diagram](../design/DCD-integrated.puml) merges the three use-case fragments. It shows four controllers (one per use case, plus `TraceItemHandler` for UC-09), three aggregates (`Delivery`, `StockLot`, `Order`) and the shared ports. Every operation in it is either an SSD system operation or a message in a sequence diagram.
 
@@ -113,13 +127,19 @@ Each sequence diagram's first message is the system event from its SSD, and ever
 
 [SD-S1a](../design/sequence/SD-S1-record-line-receipt.puml) realises OC-03. The handler delegates to `Delivery.recordLine`, which completes the trace and passes the receipt to the line; the line checks permission, converts units, validates quantities and creates the lot. Saves happen only after the last check, so every refusal leaves the system unchanged. [SD-S1b](../design/sequence/SD-S1-complete-receipt.puml) and [SD-S1c](../design/sequence/SD-S1-start-receipt.puml) realise OC-04 and OC-01/OC-02, including creation of an unannounced delivery and its lines.
 
+The handler never calls a `DeliveryLine` directly: every line operation goes through `Delivery`, so a second caller cannot record a line on a completed receipt. The only object the handler creates is the result it returns; `Delivery`, `DeliveryLine` and `StockLot` are each created by the class that holds their initialising data.
+
 ### 6.2 UC-03 Release held stock
 
 [SD-S2](../design/sequence/SD-S2-release-held-stock.puml) realises OC-05. The handler reads the user, role and time, loads the lot, and calls `StockLot.recordCheck`. The lot asks `Role` whether the actor may release or reject, validates quantities against what is held, creates the `QualityCheck` and moves its quantities. The handler saves the lot only on success and returns the new available, held and written-off quantities.
 
+The read-only `listHeldLots` event is also sequenced: the lot describes itself as a `HeldLotView`, so the handler never reads the lot's quantities field by field.
+
 ### 6.3 UC-05 Allocate stock
 
 [SD-S3a](../design/sequence/SD-S3-allocate-order-line.puml) realises OC-06. The handler checks the role, loads the order and the available lots, and calls `Order.allocateLine`, which delegates to the line. The line sorts lots with `expiresBefore`, asks each for `availableQuantity()`, calls `allocate` for the smaller of outstanding and available, and creates one `Allocation` per lot used. [SD-S3b](../design/sequence/SD-S3-trace-order-line.puml) realises the UC-09 trace by reading each allocation's trace entry.
+
+The handler saves the order and every lot it changed in one place, after the line returns success, so a lot's allocated quantity and the allocations that explain it can never disagree.
 
 ### 6.4 Consistency across the three use cases
 
@@ -139,6 +159,8 @@ The [interface catalogue](../design/interface-catalogue.md) fixes the shared voc
 - **Ports:** one repository per aggregate root (`DeliveryRepository`, `StockLotRepository`, `OrderRepository`), plus `ProducerRepository`, `ProductRepository`, `AuditContext` and `Clock`. Ports are called by controllers, not domain classes.
 - **StockLot rules:** which use case changes which quantity, and the availability invariant.
 
+A port used by only one use case stays in that use case's package (`DeliveryRepository` and `ProducerRepository` in `receiving`, `OrderRepository` in `allocation`); only ports used by more than one, such as `StockLotRepository`, sit in `shared`. Every `find` operation returns `Optional`, and the controller turns an empty result into `NOT_FOUND`, so domain classes never deal with missing records.
+
 ---
 
 ## 8. Design Evaluation
@@ -148,6 +170,10 @@ The [interface catalogue](../design/interface-catalogue.md) fixes the shared voc
 **Coupling.** Controllers depend on repository interfaces, never on storage, and use-case packages depend only on `shared`. The strongest coupling is around `StockLot`: all three use cases change it, so a change to its quantities affects every slice. We accepted this because one lot per received line keeps one producer and batch (SPK-01); splitting it would have spread traceability across objects.
 
 **Object validity.** Objects are created valid or not at all: `Delivery.startUnannounced` sets the unannounced invariants, `StockLot` is constructed with its quantities, and every operation returns `Result<T>`, so a refusal changes nothing. No class exposes a public status or quantity setter.
+
+**Result instead of exceptions.** We considered signalling business refusals with exceptions. We chose `Result<T>` because a refusal is an expected outcome the actor must see, not a fault, and because every refusal in the contracts is then visible in the sequence diagrams as a returned `Failure`, which made the contract-to-interaction check possible. Exceptions remain for technical faults, which are outside the CA2 design.
+
+**The availability formula.** Two versions of `availableQuantity()` existed until the class diagrams were merged. Subtracting written-off quantity from accepted quantity would double-count it, because written-off goods leave the held quantity, not the accepted quantity. We kept `acceptedQuantity − allocatedQuantity` and recorded the fix as DEF-02.
 
 **Main risk found in evaluation.** The manager-only rejection rule (A-04) is phrased twice: `ReceiptOutcome.permittedFor(role)` at receipt and `Role.mayReject()` in the quality check. Both rely on `Role`, but if Q-04 changes, both must change. The first refactoring we would make is for `permittedFor` to delegate to `Role.mayReject()`.
 
@@ -161,13 +187,13 @@ The [interface catalogue](../design/interface-catalogue.md) fixes the shared voc
 
 ## 9. Process and Review Evidence
 
-**Backlog and board.** The Product Backlog and iteration goals are on the Trello board (*add URL*), with lists Backlog, Ready, In Progress, Peer Review, Blocked and Done. Cards use stable IDs (US, DES, SPK, DEF), name an owner and reviewer, and link to the pull request that completed them. Captures of the board are in the appendix.
+**Backlog and board.** The Product Backlog and iteration goals are on the Trello board (https://trello.com/invite/b/6ae8aa97f29ecaceb4239398/ATTI48b297c7096ae6107cb683c67108554f14AE61A7/ca2oopaad), with lists Backlog, Ready, In Progress, Peer Review, Blocked and Done. Cards use stable IDs (US, DES, SPK, DEF), name an owner and reviewer, and link to the pull request that completed them. Captures of the board are in the appendix.
 
 **Repository.** Work was done on one branch per backlog item and merged through pull requests. Decisions were recorded as dated records (DR-001 to DR-011, SPK-01), and two defects found by checking the models against each other (DEF-01 multiplicity, DEF-02 availability formula) were fixed in separate changes.
 
 **Iterations.** Iteration 1 agreed the scenario, Product Goal, roles and reconciled baseline. Iteration 2 produced the three use-case chains, the interface catalogue and the integrated design. The updated brief on 25 Nov removed CA3, so the CA3 material was removed and recorded in DR-004.
 
-**Review.** Early pull requests were merged by their authors before review. We recognised this, turned on branch protection requiring one approval, and recorded reviews on the earlier pull requests afterwards. The [retrospective](../docs/reflection/retrospective.md) records this as the main problem and branch protection as the improvement.
+**Review.** Pull requests were merged by their authors without a recorded GitHub review; the group did not enforce approvals on `main`. Checking happened instead through cross-model consistency checks, which found DEF-01 and DEF-02, and through decisions agreed by the group (DR-001 to DR-003, DR-011). The [retrospective](../docs/reflection/retrospective.md) records the lack of recorded peer review as the main process weakness; requiring one approval on `main` is the improvement we would make.
 
 ---
 
@@ -183,5 +209,5 @@ AI output was checked in three ways. First, against the brief and Session 14's d
 
 - A. [CA2 traceability matrix and consistency evidence](../analysis/traceability-ca2.md)
 - B. Decision records: `decisions/`
-- C. Board captures: *(add images)*
+- C. Board captures: ![Final board](../docs/board/final-board.png)
 - D. Individual contribution statements and AI declarations: submitted separately by each member
