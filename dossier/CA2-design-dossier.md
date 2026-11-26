@@ -211,3 +211,4 @@ AI output was checked in three ways. First, against the brief and Session 14's d
 - B. Decision records: `decisions/`
 - C. Board captures: ![Final board](../docs/board/final-board.png)
 - D. Individual contribution statements and AI declarations: submitted separately by each member
+- E. Diagrams (exports of the PlantUML sources)
