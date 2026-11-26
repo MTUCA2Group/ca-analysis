@@ -10,7 +10,7 @@ Give Kerry Local Food Hub staff and volunteers one reliable record of what has a
 
 ## Selected design scope
 
-UC-02 Receive delivery · UC-03 Release held stock · UC-05 Allocate stock · UC-06 Handle shortfall. See [dossier section 3](dossier/03-selected-design-scope.md) and the [CA2 traceability matrix](analysis/traceability-ca2.md).
+UC-02 Receive delivery · UC-03 Release held stock · UC-05 Allocate stock (UC-06 descoped, [DR-011](decisions/DR-011-scope-three-use-cases.md)). See [dossier section 3](dossier/CA2-design-dossier.md#3-selected-design-scope) and the [CA2 traceability matrix](analysis/traceability-ca2.md).
 
 ## How we work
 
