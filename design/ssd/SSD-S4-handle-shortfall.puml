@@ -1,0 +1,42 @@
+@startuml SSD-S4-handle-shortfall
+' System sequence diagram for UC-06 Handle shortfall, slice S4
+' Black-box view: actor, system, system events and returned outcomes only
+hide footbox
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+title SSD-S4 Handle shortfall (UC-06)
+
+actor "Hub staff member\n(or manager)" as A
+participant ":KerryHubSystem" as S
+
+A -> S : viewShortfalls(orderId)
+alt order found and actor permitted
+  S --> A : ShortfallView (per short line: requested, allocated,\n outstanding, accepts reduced, accepts removal, permitted substitutes)
+else actor is a volunteer (1a)
+  S --> A : Failure(NOT_PERMITTED)
+else order does not exist (1b)
+  S --> A : Failure(NOT_FOUND)
+end
+
+loop for each short line to resolve
+  A -> S : resolveShortfall(orderLineId, resolution: ShortfallResolutionType,\n  substituteProductId [0..1])
+  alt valid and permitted
+    S --> A : ShortfallResolutionResult (allocations made,\n remaining shortfall, contact required)
+  else actor is a volunteer (1a)
+    S --> A : Failure(NOT_PERMITTED)
+  else order line does not exist (3a)
+    S --> A : Failure(NOT_FOUND)
+  else no outstanding shortfall, already resolved, or removal with allocations (3b, 5b)
+    S --> A : Failure(INVALID_STATE)
+  else preferences do not permit the resolution (4a, 4b)
+    S --> A : Failure(NOT_PERMITTED)
+  end
+end
+
+note over A, S
+  viewShortfalls only reads data, so it has no operation contract.
+  resolveShortfall changes state: contract OC-07.
+  A substitute with too little stock is a success with a remaining shortfall (5a).
+end note
+@enduml

@@ -35,3 +35,8 @@ Each member designs one slice end to end, so the work is comparable and each per
 ## Change 2026-11-26 (DR-011)
 
 UC-06 descoped. Integrated design class diagram reassigned from Zakary Snyder to Philip Dawson-Gariepy. Review ring for three members: Philip is reviewed by Alex; Danil by Philip; Alex by Danil. The integrated DCD is reviewed by Danil and Alex.
+
+
+## Change 2026-11-27 (DR-012)
+
+UC-06 restored with Zakary Snyder as owner. Philip Dawson-Gariepy corrected the chain for consistency and reviewed it, and remains owner of the integrated design class diagram.

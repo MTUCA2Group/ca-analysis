@@ -3,7 +3,7 @@
 | Field | Content |
 |-------|---------|
 | Date | 2026-11-26 |
-| Status | Accepted |
+| Status | Superseded by [DR-012](DR-012-scope-restored-four-use-cases.md) on 2026-11-27 |
 | Owner | Philip Dawson-Gariepy |
 | Decided by | Philip Dawson-Gariepy, Danil Kramnov, Oleksandr Motoryhin |
 | Related | DR-003, dossier section 3, RC-02, SPK-02, US-03, US-04 |

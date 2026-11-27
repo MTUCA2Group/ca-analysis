@@ -18,6 +18,10 @@
 
 ![SD-S3b traceOrderLine](../design/sequence/SD-S3-trace-order-line.png)
 
+![SSD-S4 Handle shortfall](../design/ssd/SSD-S4-handle-shortfall.png)
+
+![SD-S4 resolveShortfall](../design/sequence/SD-S4-handle-shortfall.png)
+
 ![Integrated design class diagram](../design/DCD-integrated.png)
 
 ![Package and layer view](../design/package-view.png)

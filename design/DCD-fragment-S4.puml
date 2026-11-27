@@ -1,0 +1,75 @@
+@startuml DCD-fragment-S4
+' Working input to DCD-integrated.puml; the integrated diagram is authoritative
+' S4 (UC-06) classes and the S4 operations added to shared Order and OrderLine
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+hide empty members
+
+package shortfall {
+  class HandleShortfallHandler <<controller>> {
+    + viewShortfalls(orderId : OrderId) : Result<ShortfallView>
+    + resolveShortfall(orderLineId : OrderLineId, resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1]) : Result<ShortfallResolutionResult>
+  }
+}
+
+package shared {
+  class Order <<entity>> {
+    - customerType : CustomerType
+    - contactRequired : boolean
+    + shortfallView() : ShortfallView
+    + resolveShortfall(orderLineId : OrderLineId, resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1], lots : List<StockLot>, user : UserId, now : DateTime) : Result<ShortfallResolutionResult>
+    - contactRequiredAfter(lineResult : ShortfallLineResult) : boolean
+    - markContactRequired() : void
+  }
+  class OrderLine <<entity>> {
+    - acceptsReducedQuantity : boolean
+    - acceptsRemoval : boolean
+    - resolution : ShortfallResolutionType [0..1]
+    - resolvedBy : UserId [0..1]
+    - resolvedAt : DateTime [0..1]
+    + resolve(resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1], lots : List<StockLot>, user : UserId, now : DateTime) : Result<ShortfallLineResult>
+    + outstandingQuantity() : Quantity
+    - permits(resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1]) : boolean
+    - recordResolution(resolution : ShortfallResolutionType, user : UserId, now : DateTime) : void
+  }
+  enum ShortfallResolutionType {
+    SUBSTITUTE
+    REDUCE
+    REMOVE
+    CONTACT_CUSTOMER
+  }
+  enum CustomerType {
+    HOUSEHOLD
+    HOSPITALITY
+    COMMUNITY_PROGRAMME
+  }
+  class ShortfallView <<DTO>>
+  class ShortfallLineResult <<DTO>>
+  class ShortfallResolutionResult <<DTO>> {
+    + ShortfallResolutionResult(lineResult : ShortfallLineResult, contactRequired : boolean)
+  }
+  class StockLot <<entity>>
+  class Allocation <<entity>>
+  class Product <<entity>>
+  interface OrderRepository
+  interface StockLotRepository
+  interface AuditContext
+  interface Clock
+  enum Role
+}
+
+HandleShortfallHandler ..> OrderRepository
+HandleShortfallHandler ..> StockLotRepository
+HandleShortfallHandler ..> AuditContext
+HandleShortfallHandler ..> Clock
+HandleShortfallHandler ..> Role
+HandleShortfallHandler ..> Order
+Order --> CustomerType
+Order ..> ShortfallView : creates
+Order ..> ShortfallResolutionResult : creates
+OrderLine --> ShortfallResolutionType
+OrderLine "0..*" --> "0..*" Product : permits as substitute
+OrderLine ..> ShortfallLineResult : creates
+OrderLine "1" *-- "0..*" Allocation : is fulfilled by
+Allocation "0..*" --> "1" StockLot : draws from
+@enduml

@@ -1,0 +1,106 @@
+@startuml SD-S4-handle-shortfall
+' Object-interaction sequence diagram for UC-06: viewShortfalls and OC-07 resolveShortfall
+' First messages match SSD-S4; every other message is an operation in DCD-integrated
+hide footbox
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+title SD-S4 Handle shortfall (UC-06, OC-07)
+
+actor "Hub staff member" as V
+participant ":HandleShortfallHandler" as H
+participant "audit:AuditContext" as A
+participant "role:Role" as R
+participant "clock:Clock" as C
+participant "orders:OrderRepository" as OR
+participant "stockLots:StockLotRepository" as SR
+participant "o:Order" as O
+participant "ol:OrderLine" as OL
+participant "lot:StockLot" as L
+
+== viewShortfalls (read only) ==
+V -> H : viewShortfalls(orderId)
+activate H
+H -> A : currentRole() : Role
+H -> R : isAtLeast(STAFF) : boolean
+alt volunteer (1a)
+  H --> V : Failure(NOT_PERMITTED)
+else staff or manager
+  H -> OR : findById(orderId) : Optional<Order>
+  alt not found (1b)
+    H --> V : Failure(NOT_FOUND)
+  else found
+    ' The order describes its own short lines, so the handler never reads line fields
+    H -> O : shortfallView() : ShortfallView
+    H --> V : ShortfallView
+  end
+end
+deactivate H
+
+== OC-07 resolveShortfall ==
+V -> H : resolveShortfall(orderLineId, resolution,\n  substituteProductId)
+activate H
+H -> A : currentRole() : Role
+H -> R : isAtLeast(STAFF) : boolean
+alt volunteer (1a)
+  H --> V : Failure(NOT_PERMITTED)
+else staff or manager
+  H -> A : currentUser() : UserId
+  H -> C : now() : DateTime
+  H -> OR : findByLine(orderLineId) : Optional<Order>
+  alt not found (3a)
+    H --> V : Failure(NOT_FOUND)
+  else found
+    ' Only a substitute needs stock, and only for the substitute product
+    opt resolution is SUBSTITUTE and a product is named
+      H -> SR : findAvailable(substituteProductId) : List<StockLot>
+    end
+    H -> O : resolveShortfall(orderLineId, resolution,\n  substituteProductId, lots, user, now)
+    activate O
+    O -> OL : resolve(resolution, substituteProductId,\n  lots, user, now)
+    activate OL
+    OL -> OL : outstandingQuantity() : Quantity
+    alt nothing outstanding or already resolved (3b)
+      OL --> O : Failure(INVALID_STATE)
+    else shortfall outstanding
+      ' Information Expert (DR-008): the line holds the customer's preferences
+      OL -> OL : permits(resolution, substituteProductId) : boolean
+      alt not permitted by preferences (4a, 4b)
+        OL --> O : Failure(NOT_PERMITTED)
+      else permitted
+        opt resolution is SUBSTITUTE
+          loop each lot, earliest use-by first, while outstanding > 0
+            OL -> L : expiresBefore(other) : boolean
+            OL -> L : availableQuantity() : Quantity
+            OL -> L : allocate(take) : Result
+            create "a:Allocation" as AL
+            OL -> AL : <<create>> Allocation(lot, take, user, now)
+          end
+        end
+        OL -> OL : recordResolution(resolution, user, now)
+        OL --> O : Success(ShortfallLineResult)
+      end
+    end
+    deactivate OL
+    opt line resolved
+      ' Information Expert (DR-008): only the order knows its customer's type
+      O -> O : contactRequiredAfter(lineResult) : boolean
+      opt contact required (FR-10)
+        O -> O : markContactRequired()
+      end
+      create "r:ShortfallResolutionResult" as RS
+      O -> RS : <<create>> ShortfallResolutionResult(lineResult, contactRequired)
+    end
+    O --> H : Result<ShortfallResolutionResult>
+    deactivate O
+    opt success
+      H -> OR : save(o)
+      loop each lot used
+        H -> SR : save(lot)
+      end
+    end
+    H --> V : Result<ShortfallResolutionResult>
+  end
+end
+deactivate H
+@enduml
