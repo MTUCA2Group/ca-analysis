@@ -83,8 +83,8 @@ Each class is designed once. The slice in *Designed by* owns its operations in t
 |-------|----------|-------------|---------|
 | `Product` | `id`, `name`, `sellingUnit`, `perishable` (RC-05), conversion factors (A-02) | S1 | S1, S2, S3, S4 |
 | `StockLot` | `id`, `product`, `acceptedQuantity`, `heldQuantity`, `writtenOffQuantity`, `allocatedQuantity`, `trace : TraceDetails` | S1 creates it; S2 adds release and write-off; S3 adds allocation | S1, S2, S3, S4 |
-| `Order` | `id`, `customer`, `requiredDate`, `status` | Not designed in CA2 (UC-04 not selected); assumed to exist | S3, S4 |
-| `OrderLine` | `id`, `product`, `requestedQuantity`, `acceptsReducedQuantity`, `acceptsRemoval`, permitted substitutes (FR-08) | S3 (allocation); S4 adds shortfall handling | S3, S4 |
+| `Order` | `id`, `customer`, `customerType`, `requiredDate`, `status`, `contactRequired` (FR-10) | Not designed in CA2 (UC-04 not selected); S4 adds `contactRequired` and shortfall resolution | S3, S4 |
+| `OrderLine` | `id`, `product`, `requestedQuantity`, `acceptsReducedQuantity`, `acceptsRemoval`, permitted substitutes (FR-08), `resolution`, `resolvedBy`, `resolvedAt` | S3 (allocation); S4 adds shortfall resolution (DR-008) | S3, S4 |
 | `Allocation` | `id`, `orderLine`, `stockLot`, `quantity`, `allocatedBy`, `allocatedAt` | S3 | S3, S4, UC-09 |
 | `Customer` | `id`, `name`, `type` (household, hospitality, community programme), contact details | Not designed in CA2; assumed to exist | S4 |
 
@@ -128,5 +128,5 @@ shared.result	Result<T> and ErrorCode (§2, §3)	nothing
 Decisions:
 
 No slice depends on another slice. Everything two slices share (StockLot, OrderLine, Allocation, …) sits in shared. This is what let the four use cases be designed in parallel and is the main Low Coupling decision of the structure.
-A port used by one slice lives in that slice: DeliveryRepository and ProducerRepository in receiving, AllocationPolicy and NotificationPort in shortfall. Otherwise shared would depend on slice classes such as Delivery.
+A port used by one slice lives in that slice: DeliveryRepository and ProducerRepository in receiving. OrderRepository is used by allocation and shortfall, so it sits in shared. S4 needs no port of its own: contact is recorded as `Order.contactRequired`, sending notifications is out of scope, and no `AllocationPolicy` was introduced (SPK-02).
 Rejected alternative: packages by layer only (controllers, domain, repositories). Every slice owner would edit the same packages, and a change to one use case could not be reviewed in isolation.

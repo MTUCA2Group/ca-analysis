@@ -11,9 +11,9 @@ Status: **Done** = reviewed and merged · **Draft** = on a branch or awaiting re
 | [UC-02 Receive delivery](use-cases/UC-02-receive-delivery.md) + [UC-11](use-cases/UC-11-record-traceability-details.md) | US-01, US-02 · DES-06, DES-08, DES-09, DES-11, DES-19 | FR-02 to FR-06 · BR-01, BR-03 · A-02, A-03, A-04 · NFR-04, NFR-05 | [GH-01, GH-02, GH-06 to GH-12](../features/receive_delivery.feature) | [SSD-S1](../design/ssd/SSD-S1-receive-delivery.puml) | [OC-01 to OC-04](../design/contracts/OC-S1-receive-delivery.md) | [CRC-S1](../design/crc/CRC-S1-receive-delivery.md) · [DR-005](../decisions/DR-005-receive-delivery-controller.md) Controller · [DR-006](../decisions/DR-006-stock-lot-creator.md) Creator | [SD-S1a](../design/sequence/SD-S1-record-line-receipt.puml), [SD-S1b](../design/sequence/SD-S1-complete-receipt.puml), [SD-S1c](../design/sequence/SD-S1-start-receipt.puml) | [DCD-fragment-S1](../design/DCD-fragment-S1.puml): ReceiveDeliveryHandler, Delivery, DeliveryLine, ReceiptOutcome, StockLot, TraceDetails, Product | Philip / Zak | Done |
 | [UC-03 Release held stock](use-cases/UC-03-release-held-stock.md) | US-02 · DES-06, DES-08, DES-09, DES-10, DES-23 | FR-06 · BR-01, BR-03 · A-04, A-08 · NFR-04, NFR-05 · RC-01, RC-04, RC-06 | [GH-13 to GH-17](../features/release_held_stock.feature) | [SSD-S2](../design/ssd/SSD-S2-release-held-stock.puml) | [OC-05](../design/contracts/OC-S2-release-held-stock.md) | [CRC-S2](../design/crc/CRC-S2-release-held-stock.md) · [DR-007](../decisions/DR-007-release-held-stock-responsibilities.md) | [SD-S2](../design/sequence/SD-S2-release-held-stock.puml) | [DCD-integrated](../design/DCD-integrated.puml): ReleaseHeldStockHandler, StockLot, QualityCheck, Role | Danil / Philip | Done |
 | [UC-05 Allocate stock](use-cases/UC-05-allocate-stock.md) + [UC-09 Trace item](use-cases/UC-09-trace-item.md) | US-05 · DES-21, DES-24 | FR-07, FR-09, FR-12 · BR-01, BR-03 · NFR-04 | [GH-03, GH-04, GH-18 to GH-22](../features/allocate_stock.feature), [GH-05](../features/trace_item.feature) | [SSD-S3](../design/ssd/SSD-S3-allocate-stock.puml) | [OC-06](../design/contracts/OC-S3-allocate-stock.md) | [CRC-S3](../design/crc/CRC-S3-allocate-stock.md) · [DR-010](../decisions/DR-010-allocation-responsibilities.md) | [SD-S3a](../design/sequence/SD-S3-allocate-order-line.puml), [SD-S3b](../design/sequence/SD-S3-trace-order-line.puml) | [DCD-integrated](../design/DCD-integrated.puml): AllocateStockHandler, TraceItemHandler, Order, OrderLine, Allocation, StockLot | Alex / Danil | Done |
-| UC-06 Handle shortfall | US-03, US-04 · SPK-02 | FR-08, FR-10 · BR-05 · RC-02 | — | — | — | — | — | — | — | **Descoped** ([DR-011](../decisions/DR-011-scope-three-use-cases.md)) |
+| [UC-06 Handle shortfall](use-cases/UC-06-handle-shortfall.md) | US-03, US-04 · SPK-02 | FR-08, FR-10 · BR-05 · NFR-04, NFR-05 · A-12, A-13 · RC-02 | [GH-23 to GH-28](../features/handle_shortfall.feature) | [SSD-S4](../design/ssd/SSD-S4-handle-shortfall.puml) | [OC-07](../design/contracts/OC-S4-handle-shortfall.md) | [CRC-S4](../design/crc/CRC-S4-handle-shortfall.md) · [DR-008](../decisions/DR-008-shortfall-responsibilities.md) | [SD-S4](../design/sequence/SD-S4-handle-shortfall.puml) | [DCD-integrated](../design/DCD-integrated.puml): HandleShortfallHandler, Order, OrderLine, Allocation, StockLot | Zak / Philip | Done ([DR-012](../decisions/DR-012-scope-restored-four-use-cases.md)) |
 
-Links for UC-03 to UC-06 are added when each branch is merged, so every link points to a file in the submitted repository.
+Every link points to a file in the submitted repository.
 
 ## Consistency evidence – UC-02
 
@@ -35,3 +35,21 @@ Every message in the UC-02 sequence diagrams maps to an operation in the design 
 | `addLine(p)` → `<<create>> DeliveryLine(p)` (SD-S1c) | `Delivery.addLine`, `DeliveryLine` constructor | OC-02 line created and associated |
 
 Each owner adds the same table for their use case before their design is marked Done.
+
+
+## Consistency evidence – UC-06
+
+| Message (SD-S4) | Receiver and DCD operation | Realises |
+|-----------------|----------------------------|----------|
+| `resolveShortfall(orderLineId, resolution, substituteProductId)` (first message) | `HandleShortfallHandler.resolveShortfall` | SSD-S4 system event; OC-07 |
+| `isAtLeast(STAFF)` | `Role.isAtLeast` | OC-07 `NOT_PERMITTED` for volunteers (A-13) |
+| `findByLine(orderLineId)` | `OrderRepository.findByLine` | OC-07 `NOT_FOUND` |
+| `findAvailable(substituteProductId)` | `StockLotRepository.findAvailable` | Substitute stock only for the named substitute |
+| `resolveShortfall(…)` → `resolve(…)` | `Order.resolveShortfall`, `OrderLine.resolve` | Order routes to the line (aggregate root) |
+| `outstandingQuantity()` | `OrderLine.outstandingQuantity` | OC-07 `INVALID_STATE` when nothing is outstanding |
+| `permits(resolution, substituteProductId)` | `OrderLine.permits` | OC-07 `NOT_PERMITTED` by preferences (BR-05) |
+| `availableQuantity()`, `allocate(take)` | `StockLot.availableQuantity`, `StockLot.allocate` | NFR-04; `lot.allocatedQuantity` increased |
+| `<<create>> Allocation(…)` | `Allocation` constructor, called by `OrderLine` | OC-07 allocation created and associated (DR-008) |
+| `recordResolution(…)` | `OrderLine.recordResolution` | OC-07 resolution, user and time recorded (NFR-05) |
+| `contactRequiredAfter(…)`, `markContactRequired()` | `Order.contactRequiredAfter`, `Order.markContactRequired` | OC-07 `contactRequired` set (FR-10) |
+| `save(o)`, `save(lot)` | `OrderRepository.save`, `StockLotRepository.save` | Only on success, so a failure changes nothing |

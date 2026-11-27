@@ -37,7 +37,7 @@
 - **Acceptance criteria:**
   - AC-03.1 Each order line can list zero or more permitted substitutes.
   - AC-03.2 A substitute that is not permitted cannot be allocated.
-- **Gherkin:** GH-04
+- **Gherkin:** GH-04 (CA1), GH-23 to GH-26 · **Design:** UC-06, SSD-S4, OC-07, SD-S4
 - **Questions / assumptions:** Q-06, A-06
 
 ## US-04 Warn hospitality customers early
@@ -50,7 +50,7 @@
 - **Acceptance criteria:**
   - AC-04.1 Any order line allocated below its requested quantity shows the shortfall.
   - AC-04.2 The customer is flagged for contact before the delivery date.
-- **Gherkin:** GH-03
+- **Gherkin:** GH-03 (CA1), GH-24, GH-25, GH-27 · **Design:** UC-06, SSD-S4, OC-07, SD-S4
 - **Questions / assumptions:** Q-05, A-05
 
 ## US-05 Trace an item to its source
