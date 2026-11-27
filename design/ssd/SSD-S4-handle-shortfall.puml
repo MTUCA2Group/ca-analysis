@@ -1,0 +1,39 @@
+@startuml SSD-S4-handle-shortfall
+' System sequence diagram for UC-06 Handle shortfall, slice S4
+hide footbox
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+title SSD-S4 Handle shortfall (UC-06, proposed)
+
+actor "Hub staff member\n(or manager)" as A
+participant ":KerryHubSystem" as S
+
+A -> S : viewShortfalls(orderId)
+alt order found and actor permitted
+  S --> A : ShortfallView (lines: requested, allocated, shortfall, customer preferences)
+else actor is a volunteer (proposed permission rule)
+  S --> A : Failure(NOT_PERMITTED)
+else order does not exist
+  S --> A : Failure(NOT_FOUND)
+end
+
+loop for each order line with a shortfall to resolve
+  A -> S : resolveShortfall(orderLineId, resolution, substituteProductId?)
+  alt valid and permitted resolution
+    S --> A : ShortfallResolutionResult (allocations, resolved quantity, remaining shortfall, contact-required status)
+  else actor is a volunteer (permission rule to confirm)
+    S --> A : Failure(NOT_PERMITTED)
+  else order line does not exist
+    S --> A : Failure(NOT_FOUND)
+  else no shortfall remains (4a)
+    S --> A : Failure(INVALID_STATE)
+  else substitute is not permitted (6c)
+    S --> A : Failure(NOT_PERMITTED)
+  else customer preferences are not recorded (6a)
+    S --> A : Resolution unavailable\n(preferences not recorded; no allocation made)
+  else customer refuses reduced quantity (6b)
+    S --> A : Resolution unavailable\n(reduced quantity not permitted; no allocation made)
+  end
+end
+@enduml

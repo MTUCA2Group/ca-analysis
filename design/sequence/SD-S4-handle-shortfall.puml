@@ -1,0 +1,87 @@
+@startuml SD-S4-handle-shortfall
+' Object-interaction sequence diagram for OC-07 resolveShortfall (UC-06)
+hide footbox
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+title SD-S4 Handle shortfall (UC-06 / OC-07)
+
+actor "Hub staff member" as S
+participant ":HandleShortfallHandler" as H
+participant "audit:AuditContext" as A
+participant "role:Role" as R
+participant "clock:Clock" as C
+participant "orders:OrderRepository" as OR
+participant "o:Order" as O
+participant "ol:OrderLine" as OL
+participant "stockLots:StockLotRepository" as SR
+participant "policy:AllocationPolicy" as P
+participant "lot:StockLot" as L
+
+S -> H : resolveShortfall(orderLineId)
+activate H
+H -> A : currentRole() : Role
+H -> R : isAtLeast(STAFF) : boolean
+alt volunteer (permission rule to confirm for S4)
+  H --> S : Failure(NOT_PERMITTED)
+else staff or manager
+  H -> A : currentUser() : UserId
+  H -> C : now() : DateTime
+  H -> OR : findByLine(orderLineId) : Optional<Order>
+  alt order / line not found
+    H --> S : Failure(NOT_FOUND)
+  else found
+    H -> O : lineOf(orderLineId) : OrderLine
+    O --> H : ol
+    H -> O : productOf(orderLineId) : ProductId
+    O --> H : productId
+    H -> SR : findAvailable(productId) : List<StockLot>
+    SR --> H : lots
+    H -> P : priorityFor(o) : Priority
+    H -> O : resolveShortfall(orderLineId, lots, policy, user, now)
+    activate O
+    O -> OL : resolveShortfall(lots, policy, user, now)
+    activate OL
+    OL -> OL : outstandingQuantity() : Quantity
+    alt no outstanding shortfall
+      OL --> O : Failure(INVALID_STATE)
+    else shortfall remains
+      OL -> OL : applyCustomerPreference()
+      alt preference is permitted substitution
+        loop each eligible lot in S3 stock-lot order, while outstanding > 0
+          OL -> L : availableQuantity() : Quantity
+          OL -> L : allocate(take) : Result<Void>
+          create "a:Allocation" as AL
+          OL -> AL : <<create>> Allocation(lot, take, user, now)
+          OL -> AL : traceEntry() : TraceEntry
+          activate AL
+          AL -> L : traceDetails() : TraceDetails
+          deactivate AL
+        end
+        OL -> OL : updateResolvedQuantityAndRemainingShortfall()
+      else preference is reduced quantity
+        OL -> OL : acceptAvailableQuantity()
+      else preference is removal
+        OL -> OL : removeUnfulfillableLine()
+      else no permitted option / no eligible substitute
+        OL -> OL : retainUnresolvedShortfall()
+      end
+      opt hospitality customer has unresolved shortfall
+        OL -> OL : markCustomerContactRequired()
+      end
+      OL --> O : Success(LineAllocationResult)
+    end
+    deactivate OL
+    O --> H : Result<ShortfallResolutionResult>
+    deactivate O
+    opt success
+      H -> OR : save(o)
+      loop each stock lot used
+        H -> SR : save(lot)
+      end
+    end
+    H --> S : Result<ShortfallResolutionResult>
+  end
+end
+deactivate H
+@enduml
