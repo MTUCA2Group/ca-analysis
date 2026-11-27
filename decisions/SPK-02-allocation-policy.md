@@ -1,41 +1,37 @@
-# SPK-02 – Shortage Priority Behind an AllocationPolicy?
-
+# SPK-02 – Shortage priority behind an AllocationPolicy?
 
 | Field | Content |
-|---|---|
-| Date | 2026-11-24 |
-| Status | Proposed |
+|-------|---------|
+| Date | 2026-11-27 |
+| Status | Accepted |
 | Owner | Zakary Snyder |
-| Reviewer | Not specified |
+| Reviewer | Philip Dawson-Gariepy |
 | Related | RC-02, A-05, Q-05, US-03, US-04, UC-05, UC-06, FR-08, FR-10 |
 
 ## Question
 
-When there is insufficient stock available to fill all orders, how should stock be prioritised until a proper system is set in place?
+When there is not enough stock for every order, how should stock be prioritised, and does the CA2 design need an `AllocationPolicy` class to hold that rule?
 
 ## Evidence
 
-- CA1: Priority was based on first-come-first-serve principle, but specific rules are unconfirmed.
-- RC-02: Priority sits behind an `AllocationPolicy`, and the rule can change.
-- UC-05: Orders are selected by staff who report remaining shortfalls.
-- US-03: Customer choice must be prioritised during stock shortages.
-- US-04: Product substitution or quantity reduction must not be assumed; recorded approval must be obtained from the customer.
+- CA1: priority was first come, first served (A-05), but the hub has not confirmed it (Q-05).
+- RC-02: the priority rule may change, so it should not be hard-coded.
+- UC-05: staff choose which order to allocate; each allocation takes what is available and reports the shortfall.
+- US-03, US-04: a substitution or reduction must never be assumed; the customer's recorded preference decides.
 
 ## Options
 
 | Option | Advantages | Disadvantages |
-|---|---|---|
-| First-come-first-serve | Basic, cheap, easy, transparent, simple to test and implement. | Fails to accommodate more valued customers or any prioritisation rules whatsoever. |
-| Manual staff choice | Flexible. | Inconsistent. |
-| Immediately design a detailed prioritisation system | Precise. | No rules currently confirmed; insufficient time. |
+|--------|-----------|---------------|
+| A. First come, first served, by the order in which staff allocate | Simple, transparent, testable; needs no new class | Cannot favour particular customers |
+| B. Manual staff choice per conflict | Flexible | Inconsistent between staff |
+| C. Design a full prioritisation policy now | Precise | No rules confirmed; nothing to design against |
 
 ## Result
 
-**Option A is recommended:** handle stock shortfalls by assigning products to orders on a first-come-first-serve basis until a proper prioritisation system can be developed. Initially, prioritise whoever submits their order first, with customers unable to order more than is in stock, and receive an alert if an order made since loading stock information drops total stock below the order, asking them to choose a different amount.
+**Option A.** Stock goes to orders in the order staff allocate them (UC-05), and UC-06 resolves each remaining shortfall by the customer's own preferences. No designed operation compares two competing orders, so the CA2 design does **not** introduce an `AllocationPolicy` class: it would have one implementation and no caller.
 
 ## Consequences
 
-- RC-02 still has no confirmed policy.
-- S3's allocation design will use `AllocationPolicy` instead of a hard-coded priority designation process.
-- The transitional `AllocationPolicy` will be first-come-first-serve.
-- A rule must be established in the case of two conflicting orders made at the same millisecond.
+- RC-02 stays open and is recorded as a limitation in the design evaluation.
+- If the hub confirms a priority rule, it would be added as an `AllocationPolicy` port used by `AllocateStockHandler` to order the orders it allocates; `OrderLine` and `StockLot` would not change.

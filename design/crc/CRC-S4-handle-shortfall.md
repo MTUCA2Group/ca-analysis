@@ -1,35 +1,51 @@
-# CRC S4 Handle Shortfall
+# CRC / responsibility model – S4 Handle shortfall
+
+Full GRASP rationale with candidates and rejected alternatives: [DR-008](../../decisions/DR-008-shortfall-responsibilities.md).
 
 ## Cards
 
-### HandleShortfallHandler (application layer)
+### HandleShortfallHandler *(application layer)*
 
 | Knows | Does | Collaborators |
-|---|---|---|
-| The ports it was given | Receives the S4 system events. Performs permission checks. Loads relevant order and stock lots. Orchestrates shortfall resolutions. Saves altered order and stock lots. Returns `Result<T>`. | AuditContext, Clock, OrderRepository, StockLotRepository, Role, Order, AllocationPolicy |
+|-------|------|---------------|
+| The ports it was given | Receives `viewShortfalls` and `resolveShortfall`; checks the role; loads the order and, for a substitute, the substitute's available lots; saves the order and changed lots only on success | AuditContext, Clock, Role, OrderRepository, StockLotRepository, Order |
 
-### AllocationPolicy (domain)
-
-| Knows | Does | Collaborators |
-|---|---|---|
-| The priority rules it covers | Defines the priority rule used regarding allocation decisions. Allows it to replace the temporary allocation policy without modifying shortfall handling. | Order, TemporaryAllocationPolicy |
-
-### TemporaryAllocationPolicy (domain)
+### Order *(domain, aggregate root)*
 
 | Knows | Does | Collaborators |
-|---|---|---|
-| SPK-02 temporary AllocationPolicy | Prioritises order by date-time. | Order, AllocationPolicy |
+|-------|------|---------------|
+| Its lines, its customer's type, whether contact is required | Builds the `ShortfallView`; routes a resolution to the right line; decides whether the customer must be contacted (FR-10) and sets the flag; builds the `ShortfallResolutionResult` | OrderLine, ShortfallResolutionResult |
 
-### ShortfallResolutionResult (output DTO)
+### OrderLine *(domain)*
 
 | Knows | Does | Collaborators |
-|---|---|---|
-| Result of shortfall resolution, total allocations, shortfall remaining, resolved lines, required contact | Returns the shortfall-resolution outcome to the handler. | HandleShortfallHandler, OrderLine, Allocation |
+|-------|------|---------------|
+| Requested quantity, its allocations, `acceptsReducedQuantity`, `acceptsRemoval`, permitted substitutes, resolution, resolved by / at | Knows its outstanding quantity; checks the resolution is permitted (BR-05); for a substitute, allocates from the lots and creates each `Allocation`; records the resolution | StockLot, Allocation, ShortfallResolutionType |
 
-## GRASP Reasoning
+### StockLot *(domain, reused from S1–S3)*
+
+| Knows | Does | Collaborators |
+|-------|------|---------------|
+| Accepted, held, written-off and allocated quantities | Reports `availableQuantity()`; refuses to `allocate` more than is available; orders itself by use-by (`expiresBefore`) | — |
+
+### ShortfallResolutionType *(enum)*
+
+| Knows | Does | Collaborators |
+|-------|------|---------------|
+| `SUBSTITUTE`, `REDUCE`, `REMOVE`, `CONTACT_CUSTOMER` | — | — |
+
+### ShortfallResolutionResult *(output DTO)*
+
+| Knows | Does | Collaborators |
+|-------|------|---------------|
+| Allocations made, remaining shortfall, contact required | — (data only) | — |
+
+## GRASP rationale
 
 | Decision | Principle | Why |
-|---|---|---|
-| HandleShortfallHandler orchestrates system event | Controller | Separates system event-handling from domain rules. |
-| AllocationPolicy hides allocation priority | Encapsulation | Allows it to replace temporary policy without rewriting handlers. |
-| TemporaryAllocationPolicy implements abstraction | Polymorphism | Allows AllocationPolicy child classes to replace temporary prioritisation rules. |
+|----------|-----------|-----|
+| `HandleShortfallHandler` receives the S4 system events | Controller (use-case controller) | Same pattern as S1–S3 (DR-005); no rules in the controller |
+| `OrderLine` checks the resolution against the customer's preferences | Information Expert | The line holds the preferences and the outstanding quantity (domain model: `OrderLine` permits substitutes) |
+| `OrderLine` creates substitute `Allocation`s | Creator | Same as UC-05 (DR-010): allocations are recorded against the line |
+| `Order` sets `contactRequired` | Information Expert | Only the order knows its customer's type; one flag per order, not per line |
+| No `AllocationPolicy` class | Pure Fabrication considered and rejected | No designed operation compares competing orders (SPK-02) |

@@ -1,124 +1,75 @@
 @startuml DCD-fragment-S4
-' Working input to DCD-integrated.puml
+' Working input to DCD-integrated.puml; the integrated diagram is authoritative
+' S4 (UC-06) classes and the S4 operations added to shared Order and OrderLine
 skinparam shadowing false
 skinparam classAttributeIconSize 0
 hide empty members
 
 package shortfall {
   class HandleShortfallHandler <<controller>> {
-    - orders : OrderRepository
-    - stockLots : StockLotRepository
-    - policy : AllocationPolicy
-    - audit : AuditContext
-    - clock : Clock
-    + resolveShortfall(orderLineId : OrderLineId) : Result<ShortfallResolutionResult>
+    + viewShortfalls(orderId : OrderId) : Result<ShortfallView>
+    + resolveShortfall(orderLineId : OrderLineId, resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1]) : Result<ShortfallResolutionResult>
   }
-
-  class ShortfallResolutionResult <<DTO>> {
-    + lineResult : LineAllocationResult
-    + resolutionStatus : ShortfallResolutionStatus
-    + customerContactRequired : boolean
-  }
-
-  enum ShortfallResolutionStatus {
-    RESOLVED
-    REDUCED
-    REMOVED
-    UNRESOLVED
-  }
-
-  interface AllocationPolicy {
-    + priorityFor(order : Order) : Priority
-  }
-  class FirstComeFirstServedAllocationPolicy {
-    + priorityFor(order : Order) : Priority
-  }
-  enum Priority
 }
-
 
 package shared {
   class Order <<entity>> {
-    + lineOf(orderLineId : OrderLineId) : OrderLine
-    + productOf(orderLineId : OrderLineId) : ProductId
-    + resolveShortfall(orderLineId : OrderLineId, lots : List<StockLot>, policy : AllocationPolicy, user : UserId, now : DateTime) : Result<ShortfallResolutionResult>
+    - customerType : CustomerType
+    - contactRequired : boolean
+    + shortfallView() : ShortfallView
+    + resolveShortfall(orderLineId : OrderLineId, resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1], lots : List<StockLot>, user : UserId, now : DateTime) : Result<ShortfallResolutionResult>
+    - contactRequiredAfter(lineResult : ShortfallLineResult) : boolean
+    - markContactRequired() : void
   }
-
   class OrderLine <<entity>> {
     - acceptsReducedQuantity : boolean
     - acceptsRemoval : boolean
-    - substitutes : List<ProductId>
-    + resolveShortfall(lots : List<StockLot>, policy : AllocationPolicy, user : UserId, now : DateTime) : Result<LineAllocationResult>
+    - resolution : ShortfallResolutionType [0..1]
+    - resolvedBy : UserId [0..1]
+    - resolvedAt : DateTime [0..1]
+    + resolve(resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1], lots : List<StockLot>, user : UserId, now : DateTime) : Result<ShortfallLineResult>
     + outstandingQuantity() : Quantity
-    + applyCustomerPreference() : Result<Void>
-    + traceEntries() : List<TraceEntry>
+    - permits(resolution : ShortfallResolutionType, substituteProductId : ProductId [0..1]) : boolean
+    - recordResolution(resolution : ShortfallResolutionType, user : UserId, now : DateTime) : void
   }
-
-  class Allocation <<entity>> {
-    + Allocation(lot : StockLot, quantity : Quantity, user : UserId, now : DateTime)
-    + traceEntry() : TraceEntry
+  enum ShortfallResolutionType {
+    SUBSTITUTE
+    REDUCE
+    REMOVE
+    CONTACT_CUSTOMER
   }
-
-  class LineAllocationResult <<DTO>> {
-    + entries : List<TraceEntry>
-    + totalAllocated : Quantity
-    + shortfall : Quantity
+  enum CustomerType {
+    HOUSEHOLD
+    HOSPITALITY
+    COMMUNITY_PROGRAMME
   }
-  class TraceEntry <<DTO>>
-
-  class StockLot <<entity>> {
-    + availableQuantity() : Quantity
-    + allocate(quantity : Quantity) : Result<Void>
-    + traceDetails() : TraceDetails
+  class ShortfallView <<DTO>>
+  class ShortfallLineResult <<DTO>>
+  class ShortfallResolutionResult <<DTO>> {
+    + ShortfallResolutionResult(lineResult : ShortfallLineResult, contactRequired : boolean)
   }
-  class TraceDetails <<value>>
+  class StockLot <<entity>>
+  class Allocation <<entity>>
   class Product <<entity>>
-  enum Role {
-    VOLUNTEER
-    STAFF
-    MANAGER
-    + isAtLeast(role : Role) : boolean
-  }
-
-  interface OrderRepository {
-    + findByLine(orderLineId : OrderLineId) : Optional<Order>
-    + save(order : Order) : void
-  }
-  interface StockLotRepository {
-    + findAvailable(productId : ProductId) : List<StockLot>
-    + save(lot : StockLot) : void
-  }
-  interface AuditContext {
-    + currentUser() : UserId
-    + currentRole() : Role
-  }
-  interface Clock {
-    + now() : DateTime
-  }
+  interface OrderRepository
+  interface StockLotRepository
+  interface AuditContext
+  interface Clock
+  enum Role
 }
-
 
 HandleShortfallHandler ..> OrderRepository
 HandleShortfallHandler ..> StockLotRepository
-HandleShortfallHandler ..> AllocationPolicy
 HandleShortfallHandler ..> AuditContext
 HandleShortfallHandler ..> Clock
 HandleShortfallHandler ..> Role
 HandleShortfallHandler ..> Order
-HandleShortfallHandler ..> ShortfallResolutionResult : returns
-
-AllocationPolicy <|.. FirstComeFirstServedAllocationPolicy
-FirstComeFirstServedAllocationPolicy ..> Order
-Order "1" *-- "1..*" OrderLine : lines
+Order --> CustomerType
+Order ..> ShortfallView : creates
+Order ..> ShortfallResolutionResult : creates
+OrderLine --> ShortfallResolutionType
+OrderLine "0..*" --> "0..*" Product : permits as substitute
+OrderLine ..> ShortfallLineResult : creates
 OrderLine "1" *-- "0..*" Allocation : is fulfilled by
 Allocation "0..*" --> "1" StockLot : draws from
-StockLot "0..*" --> "1" Product : product
-StockLot "1" *-- "1" TraceDetails : trace
-OrderLine ..> LineAllocationResult : creates
-Allocation ..> TraceEntry : creates
-LineAllocationResult *-- TraceEntry
-ShortfallResolutionResult *-- LineAllocationResult
-Order ..> AllocationPolicy
-OrderLine ..> AllocationPolicy
-OrderLine ..> StockLot
 @enduml
